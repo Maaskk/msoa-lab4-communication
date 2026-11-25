@@ -11,11 +11,21 @@ import {
   id,
   fail,
 } from "../../shared/runtime.mjs";
+import { lab4 } from "../../communication/outbox.mjs";
+import { startInventoryRpc } from "../../communication/inventory-rpc.mjs";
+
 const db = database("inventory");
+function checkStock(lines) {
+  return items(lines).every(
+    (x) => (get(db, x.productId)?.stock ?? -1) >= x.quantity,
+  );
+}
 for (const p of JSON.parse(
   readFileSync(new URL("../../seed/products.json", import.meta.url)),
 ))
   if (!get(db, p.id)) put(db, { id: p.id, stock: p.stock });
+if (lab4) await startInventoryRpc(checkStock);
+
 serve("inventory", async (req, url, b) => {
   let p = url.pathname;
   if (req.method === "GET" && /^\/api\/inventory\/\d+$/.test(p)) {
@@ -24,12 +34,7 @@ serve("inventory", async (req, url, b) => {
     return { productId: r.id, stock: r.stock };
   }
   if (req.method === "POST" && p === "/api/inventory/check") {
-    let list = items(b.items);
-    return {
-      available: list.every(
-        (x) => (get(db, x.productId)?.stock ?? -1) >= x.quantity,
-      ),
-    };
+    return { available: checkStock(b.items) };
   }
   if (
     req.method === "POST" &&

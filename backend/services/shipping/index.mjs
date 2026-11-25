@@ -12,9 +12,45 @@ import {
   own,
   call,
   requireInternal,
+  txn,
 } from "../../shared/runtime.mjs";
+import { lab4, initOutbox, emit, dispatch } from "../../communication/outbox.mjs";
+import { publishEvent } from "../../communication/kafka.mjs";
+import { consumeShipments } from "../../communication/rabbitmq.mjs";
+
 const db = database("shipping");
+initOutbox(db);
+dispatch(db, "kafka", publishEvent);
+if (lab4) db.exec("CREATE TABLE IF NOT EXISTS cancelled_orders (order_id TEXT PRIMARY KEY)");
 const byOrder = (k) => all(db).find((x) => x.orderId === k);
+
+function saveShipment(shipment, type) {
+  put(db, shipment);
+  emit(db, type, "shipping", shipment.orderId, { status: shipment.status });
+  return shipment;
+}
+
+function prepareShipment(order) {
+  return txn(db, () => {
+    const existing = byOrder(order.id);
+    if (existing) return existing;
+    if (lab4 && db.prepare("SELECT order_id FROM cancelled_orders WHERE order_id = ?").get(order.id)) {
+      return null;
+    }
+    return saveShipment({
+      id: id(),
+      orderId: order.id,
+      userId: order.userId,
+      address: order.customer,
+      trackingNumber: "MSOA-" + id().slice(0, 8).toUpperCase(),
+      status: "PREPARING",
+      createdAt: now(),
+      updatedAt: now(),
+    }, "shipment.prepared");
+  });
+}
+
+if (lab4) void consumeShipments(prepareShipment);
 serve("shipping", async (req, url, b) => {
   let p = url.pathname,
     m;
@@ -33,25 +69,22 @@ serve("shipping", async (req, url, b) => {
         "Order must be paid",
         409,
       );
-      return put(db, {
-        id: id(),
-        orderId: m[1],
-        userId: b.order.userId,
-        address: b.order.customer,
-        trackingNumber: "MSOA-" + id().slice(0, 8).toUpperCase(),
-        status: "PREPARING",
-        createdAt: now(),
-        updatedAt: now(),
-      });
+      s = prepareShipment(b.order);
+      assert(s, "Order cancelled before shipment preparation", 409);
+      return s;
     }
     if (m[2] === "cancel") {
-      if (!s) return { success: true };
+      if (!s) {
+        if (lab4) db.prepare("INSERT OR IGNORE INTO cancelled_orders VALUES (?)").run(m[1]);
+        return { success: true };
+      }
+      if (s.status === "CANCELLED") return s;
       assert(
         ["PREPARING", "CANCELLED"].includes(s.status),
         "Order already shipped",
         409,
       );
-      return put(db, { ...s, status: "CANCELLED", updatedAt: now() });
+      return txn(db, () => saveShipment({ ...s, status: "CANCELLED", updatedAt: now() }, "shipment.cancelled"));
     }
     assert(s, "Shipment not found", 404);
     if (s.status === b.status) return s;
@@ -61,7 +94,7 @@ serve("shipping", async (req, url, b) => {
       IN_TRANSIT: "DELIVERED",
     };
     assert(next[s.status] === b.status, "Invalid shipment transition", 409);
-    return put(db, { ...s, status: b.status, updatedAt: now() });
+    return txn(db, () => saveShipment({ ...s, status: b.status, updatedAt: now() }, "shipment.status_changed"));
   }
   const user = await actor(req);
   if (p === "/api/shipments" && req.method === "GET")

@@ -15,8 +15,23 @@ import {
   requireInternal,
   internal,
   locked,
+  txn,
 } from "../../shared/runtime.mjs";
+import { checkInventory } from "../../communication/inventory-rpc.mjs";
+import { lab4, initOutbox, emit, dispatch } from "../../communication/outbox.mjs";
+import { publishEvent } from "../../communication/kafka.mjs";
+
 const db = database("orders");
+initOutbox(db);
+dispatch(db, "kafka", publishEvent);
+
+function saveOrder(order, type) {
+  return txn(db, () => {
+    put(db, order);
+    emit(db, type, "orders", order.id, { status: order.status });
+    return order;
+  });
+}
 const order = (id) => {
   let o = get(db, id);
   assert(o, "Order not found", 404);
@@ -87,7 +102,7 @@ async function action(o, act, b = {}) {
       })),
       reservationId: o.id,
     });
-    return put(db, { ...o, status: "CANCELLED" });
+    return saveOrder({ ...o, status: "CANCELLED" }, "order.cancelled");
   }
   fail(400, "Unknown action");
 }
@@ -140,8 +155,11 @@ serve("orders", async (req, url, b) => {
       let total =
         priced.reduce((s, x) => s + Math.round(x.price * 100) * x.quantity, 0) /
         100;
-      let o = (key &&
-        all(db).find((x) => x.userId === user.id && x.key === key)) || {
+      const previous = key && all(db).find((x) => x.userId === user.id && x.key === key);
+      if (lab4 && !previous) {
+        assert(await checkInventory(list), "Insufficient stock", 409);
+      }
+      let o = previous || {
         id: id(),
         userId: user.id,
         customer: b.customer,
@@ -162,7 +180,7 @@ serve("orders", async (req, url, b) => {
         if (e.status === 409) put(db, { ...o, status: "REJECTED" });
         throw e;
       }
-      return put(db, { ...o, status: "PENDING_PAYMENT" });
+      return saveOrder({ ...o, status: "PENDING_PAYMENT" }, "order.created");
     });
   }
   if (

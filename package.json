@@ -11,12 +11,20 @@
     "test": "npm run validate:contracts && npm run test:legacy && npm run test:api",
     "test:legacy": "node tests/integration.mjs",
     "test:api": "node scripts/test-api.mjs",
-    "validate:contracts": "node scripts/validate-contracts.mjs"
+    "validate:contracts": "node scripts/validate-contracts.mjs",
+    "start:lab4": "node scripts/start.mjs --lab4 --backend-only",
+    "test:lab4": "node tests/lab4.mjs"
   },
   "devDependencies": {
-    "newman": "^6.2.1",
     "@apidevtools/swagger-parser": "^12.0.0",
     "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
+    "ajv-formats": "^3.0.1",
+    "newman": "^6.2.1"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.7",
+    "@grpc/proto-loader": "^0.8.1",
+    "amqplib": "^2.4.2",
+    "kafkajs": "^2.2.4"
   }
 }

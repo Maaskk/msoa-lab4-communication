@@ -1,74 +1,47 @@
-# LAB 3 - Designing an API Contract
+# LAB4 · Inter-service communication
 
-Microservice-oriented Architectures · Master Big Data & Data Science · Professor Zouheir BANOU
+This lab extends the six e-commerce services from [LAB3](https://github.com/Maaskk/msoa-lab3-api-contracts). The frontend and the existing REST contracts still use the same endpoints. A seventh service, Analytics, reads historical business events in LAB4 mode.
 
-This project extends the LAB 2 e-commerce application with six REST API contracts, a runnable Postman collection, and a backward-compatible Catalog price format.
+| Scenario | Integration | What to demonstrate |
+| --- | --- | --- |
+| Check stock during checkout | Orders → Inventory over gRPC | Available stock allows checkout; insufficient stock returns HTTP 409. |
+| Prepare shipment after payment | Payments → RabbitMQ → Shipping | Pay while Shipping is offline, then start it and observe the queued request being processed. |
+| Retain and replay business events | Orders, Payments and Shipping → Kafka → Analytics | Start a new consumer group after an order and recover its three historical events. |
 
-## Deliverables
+## Run locally
 
-- [English API contract for the six services](docs/03_Contrats_API.md)
-- [Six OpenAPI 3.0.3 specifications](contracts/)
-- [Answers to questions 1–6](docs/01_Analyse_et_Decisions.md)
-- [Index of the 36 REST operations](docs/02_Endpoints.md)
-- [Postman collection](postman/LAB3.postman_collection.json) and [local environment](postman/Local.postman_environment.json)
-- [Newman results](evidence/postman-results.json) and [price compatibility evidence](evidence/pricing-compatibility.json)
-- [Group report](reports/LAB3_Rapport_Groupe.pdf)
-
-## Run and verify
-
-Use Node.js 24 or newer and npm.
+Requires Node.js 24+, npm and Docker Compose.
 
 ```sh
 npm ci
+docker compose -f compose.lab4.yml up -d
+INTERNAL_KEY=local-lab4-demo-key-32-characters npm run start:lab4
+```
+
+The six REST services listen on ports 8081–8086, Analytics on 8087, gRPC on 50051, RabbitMQ on 5672 and Kafka on 9092. The brokers and gRPC endpoint bind to loopback for this lab. The fixed credentials above and the Compose broker credentials are for local demonstration.
+
+To use the inherited frontend, run `npm ci --prefix frontend` and `npm run dev --prefix frontend` in another terminal. The sample login is `demo@msoa.shop` / `demo123`. After placing and paying for an order, inspect the analytics projection.
+
+```sh
+curl -s -H 'X-Internal-Key: local-lab4-demo-key-32-characters' \
+  http://127.0.0.1:8087/api/analytics/summary
+```
+
+Open a second Analytics instance with a fresh group to replay earlier events.
+
+```sh
+INTERNAL_KEY=local-lab4-demo-key-32-characters \
+ANALYTICS_GROUP=msoa-demo-replay PORT=8088 \
+node backend/services/analytics/index.mjs
+```
+
+Query the same summary endpoint on port 8088. Use a new group name on each fresh replay. A group with saved offsets resumes its position. Broker data persists in the Compose volumes.
+
+## Verify
+
+```sh
 npm test
-npm start
+npm run test:lab4
 ```
 
-Stop any running services before `npm test`. The tests use the same ports and isolated temporary databases. `npm start` starts the six APIs and generates a shared internal key in memory. Ctrl+C stops the processes.
-
-| Service | Port | Assigned owner |
-|---|---:|---|
-| Authentication | 8081 | Elhaddaji Hamza |
-| Catalog | 8082 | Sekkat Israa |
-| Inventory | 8083 | Mouhcine Ayar |
-| Orders | 8084 | ASHAD Ossama |
-| Payments | 8085 | Rahil Msouhli |
-| Shipping | 8086 | Karany Mohamed Amine |
-
-Each service exposes `GET /health`. During normal operation, demo data is stored in `backend/data`.
-
-The supplied React frontend lives in `frontend/`. To start it, run the following in another terminal:
-
-```sh
-cd frontend
-npm ci
-npm run dev
-```
-
-The local demo account is `demo@msoa.shop` with password `demo123`. The Postman tests register a temporary user.
-
-## Legacy and v2 price formats
-
-```sh
-curl http://127.0.0.1:8082/products/1
-curl http://127.0.0.1:8082/api/v2/products/1
-curl 'http://127.0.0.1:8082/api/v2/products/1?currency=EUR'
-```
-
-The legacy route returns `price: 8499` as a number in MAD. The v2 route returns `price: { amount: 8499, currency: "MAD" }` by default and accepts EUR and USD using fixed demonstration price lists. An unsupported currency returns HTTP 400. Existing frontend and Orders flows continue using MAD.
-
-## Postman and automated checks
-
-Import the collection and the local environment, select that environment, start the APIs with `npm start`, and run the collection in order. Login populates the token and identifiers automatically.
-
-```sh
-npm run validate:contracts
-npm run test:legacy
-npm run test:api
-```
-
-These commands validate the six specifications, rerun the 25 LAB 2 integration scenarios, and use Newman to exercise 47 requests and 106 assertions. They include success and error schemas and both price formats.
-
-## Scope
-
-The project uses Node.js, HTTP, and SQLite with one instance per service. Payment and shipping are simulated. Orders uses process-local locks. Cross-service consistency relies on idempotent operations and compensating actions. The frontend is based on [ZOUHEIRBN/MSOA-E-com-Demo](https://github.com/ZOUHEIRBN/MSOA-E-com-Demo/tree/baee7d79828a4883c8c7158e41ac4b1a878bf12a).
+The first command runs the existing contract, integration and Postman checks. The second uses real gRPC, RabbitMQ and Kafka and tests recovery and replay. See the [recorded results](evidence/lab4-verification.txt) and [analysis and communication contracts](docs/LAB4.md).

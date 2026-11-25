@@ -12,8 +12,16 @@ import {
   own,
   call,
   requireInternal,
+  txn,
 } from "../../shared/runtime.mjs";
+import { lab4, initOutbox, enqueue, emit, dispatch } from "../../communication/outbox.mjs";
+import { publishEvent } from "../../communication/kafka.mjs";
+import { publishShipment } from "../../communication/rabbitmq.mjs";
+
 const db = database("payments");
+initOutbox(db);
+dispatch(db, "rabbitmq", publishShipment);
+dispatch(db, "kafka", publishEvent);
 serve("payments", async (req, url, b) => {
   const p = url.pathname;
   let m;
@@ -24,8 +32,12 @@ serve("payments", async (req, url, b) => {
     requireInternal(req);
     let existing = all(db).find((x) => x.orderId === m[1]);
     if (m[2] === "refund") {
-      if (existing && existing.status === "SUCCESS")
-        put(db, { ...existing, status: "REFUNDED" });
+      if (existing && existing.status === "SUCCESS") {
+        txn(db, () => {
+          put(db, { ...existing, status: "REFUNDED" });
+          emit(db, "payment.refunded", "payments", existing.orderId, { amount: existing.amount });
+        });
+      }
       return { success: true };
     }
     assert(
@@ -36,7 +48,7 @@ serve("payments", async (req, url, b) => {
       assert(existing.status === "SUCCESS", "Payment already refunded", 409);
       return existing;
     }
-    return put(db, {
+    const payment = {
       id: id(),
       orderId: m[1],
       userId: b.order.userId,
@@ -44,6 +56,18 @@ serve("payments", async (req, url, b) => {
       method: b.method,
       status: "SUCCESS",
       createdAt: now(),
+    };
+    return txn(db, () => {
+      put(db, payment);
+      if (lab4) {
+        const { id: orderId, userId, customer } = b.order;
+        enqueue(db, "rabbitmq", {
+          type: "shipment.prepare", version: 1, messageId: payment.id,
+          order: { id: orderId, userId, customer, status: "PAID" },
+        });
+        emit(db, "payment.captured", "payments", orderId, { amount: payment.amount });
+      }
+      return payment;
     });
   }
   const user = await actor(req);

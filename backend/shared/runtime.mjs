@@ -10,6 +10,7 @@ export const names = [
   "orders",
   "payments",
   "shipping",
+  "analytics",
 ];
 export const now = () => new Date().toISOString();
 export const id = () => randomUUID();

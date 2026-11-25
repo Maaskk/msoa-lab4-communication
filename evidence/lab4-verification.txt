@@ -1,0 +1,36 @@
+LAB4 verification · 25 November 2026
+
+Existing endpoints · npm test
+PASS Six independent services respond to health
+PASS Register returns public user; duplicate email rejected
+PASS Wrong password rejected
+PASS Login and session introspection
+PASS Catalog contracts and unknown product
+PASS CORS preflight authorizes Vite
+PASS Negative, zero and fractional quantities rejected
+PASS Duplicate lines are aggregated before availability check
+PASS Public callers cannot mutate stock or forge internal actions
+PASS All-or-nothing stock reservation on shortage
+PASS Order uses server catalog price and reserves stock
+PASS Order cannot be paid via customer status PATCH
+PASS Unpaid order cannot create shipment
+PASS Payment succeeds and order becomes PAID
+PASS Payment retry returns same record without double charge
+PASS Shipment creation is idempotent and uses order address
+PASS Cancellation refunds simulation, restores stock exactly once and cancels shipment
+PASS Shipping progression enforces sequence and synchronizes order
+PASS User ownership enforced across orders, payments and shipments
+PASS Concurrent reservations cannot oversell
+PASS Concurrent idempotency key creates one order
+PASS Auth passwords are salted hashes, sessions are token hashes
+PASS Service restart preserves persisted order and stock
+PASS Catalog outage produces 503 without changing stock
+PASS Logout revokes session
+POSTMAN SUCCESS: 47 requests; 106 assertions
+
+Real gRPC, RabbitMQ and Kafka · npm run test:lab4
+PASS gRPC CheckStock returns both available and out-of-stock results
+PASS payment succeeds with Shipping offline
+PASS RabbitMQ retains the job and Shipping creates one shipment on recovery
+PASS Kafka group analytics replayed 3 events produced before the group started
+PASS Kafka group analytics-replay replayed 3 events produced before the group started

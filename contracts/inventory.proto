@@ -1,0 +1,19 @@
+syntax = "proto3";
+package msoa.inventory.v1;
+
+service Inventory {
+  rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
+}
+
+message OrderLine {
+  uint64 product_id = 1;
+  uint32 quantity = 2;
+}
+
+message CheckStockRequest {
+  repeated OrderLine items = 1;
+}
+
+message CheckStockResponse {
+  bool available = 1;
+}
