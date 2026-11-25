@@ -8,6 +8,21 @@ This lab extends the six e-commerce services from [LAB3](https://github.com/Maas
 | Prepare shipment after payment | Payments → RabbitMQ → Shipping | Pay while Shipping is offline, then start it and observe the queued request being processed. |
 | Retain and replay business events | Orders, Payments and Shipping → Kafka → Analytics | Start a new consumer group after an order and recover its three historical events. |
 
+## Team responsibilities and demo
+
+The six LAB2 service owners are grouped into three pairs for the LAB4 demo. The first two pairs cover the services directly involved in each interaction. The third pair presents the shared event pipeline and the new Analytics service.
+
+| Team member | LAB4 responsibility | What to show |
+| --- | --- | --- |
+| **Ossama Ashad** | **gRPC · Orders client** | Show where checkout calls `CheckStock` before reserving items. Try an available quantity and an excessive one. Explain that the check reads stock and the reservation transaction deducts it. [Orders service](backend/services/orders/index.mjs) |
+| **Mouhcine Ayar** | **gRPC · Inventory server** | Show the Protobuf request and reply, then trace how Inventory returns `available` from its stock records. Explain how the reservation transaction prevents overselling. [Protobuf contract](contracts/inventory.proto) · [Inventory service](backend/services/inventory/index.mjs) |
+| **Rahil Msouhli** | **RabbitMQ · Payments publisher** | Show where Payments saves the successful payment and its outgoing shipment request together. Demonstrate that checkout succeeds while Shipping is offline. [Payments service](backend/services/payments/index.mjs) · [Outbox](backend/communication/outbox.mjs) |
+| **Mohamed Amine Karany** | **RabbitMQ · Shipping consumer** | Show the request waiting in the queue. Start Shipping and verify that it creates one shipment, acknowledges the request, and handles a duplicate delivery without creating a second shipment. [Shipping service](backend/services/shipping/index.mjs) · [RabbitMQ transport](backend/communication/rabbitmq.mjs) |
+| **Hamza Elhaddaji** | **Kafka · Event publishing** | Show which services publish `order.created`, `payment.captured`, and `shipment.prepared`. Explain the shared event fields, the order ID as message key, and the seven-day topic retention. [Kafka transport](backend/communication/kafka.mjs) · [Event contract](docs/LAB4.md#3-event-retention-and-replay) |
+| **Israa Sekkat** | **Kafka · Analytics and replay** | Show Analytics reading the events from an order that ran before it started. Start a second instance with a fresh consumer group and verify that it reads the same history. [Analytics service](backend/services/analytics/index.mjs) · [Replay instructions](#run-locally) |
+
+The [LAB4 integration test](tests/lab4.mjs) demonstrates all three scenarios.
+
 ## Run locally
 
 Requires Node.js 24+, npm and Docker Compose.
